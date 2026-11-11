@@ -15,6 +15,7 @@ import (
 
 	"mapup-geofence/internal/domain"
 	"mapup-geofence/internal/handler"
+	"mapup-geofence/internal/middleware"
 	"mapup-geofence/internal/repository"
 	"mapup-geofence/internal/service"
 	"mapup-geofence/internal/websocket"
@@ -92,6 +93,9 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"mapup-geofence"}`))
 	})
 
+	// Initialize Rate Limiter for Location Updates (Bonus Requirement)
+	rateLimiter := middleware.NewRateLimiter(25, 40, time.Second)
+
 	// Required Endpoints
 	r.Post("/geofences", geofenceHandler.CreateGeofence)
 	r.Get("/geofences", geofenceHandler.GetGeofences)
@@ -99,7 +103,7 @@ func main() {
 	r.Post("/vehicles", vehicleHandler.CreateVehicle)
 	r.Get("/vehicles", vehicleHandler.GetVehicles)
 
-	r.Post("/vehicles/location", locationHandler.UpdateLocation)
+	r.With(rateLimiter.LimitMiddleware).Post("/vehicles/location", locationHandler.UpdateLocation)
 	r.Get("/vehicles/location/{vehicle_id}", locationHandler.GetVehicleLocation)
 
 	r.Post("/alerts/configure", alertHandler.ConfigureAlert)
