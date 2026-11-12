@@ -160,8 +160,25 @@ export default function App() {
       setDrawnPoints((prev) => [...prev, [lat, lng]]);
     } else if (mapMode === 'teleport' && selectedVehicleId) {
       try {
-        await api.updateLocation(selectedVehicleId, lat, lng);
+        const res = await api.updateLocation(selectedVehicleId, lat, lng);
         setMapMode('view');
+        // Instantly update the vehicle location and current geofences in local state
+        setVehicleLocations((prev) => ({
+          ...prev,
+          [selectedVehicleId]: {
+            vehicle_id: selectedVehicleId,
+            current_location: {
+              latitude: lat,
+              longitude: lng,
+              timestamp: new Date().toISOString(),
+            },
+            current_geofences: (res.current_geofences || []).map((cg) => ({
+              geofence_id: cg.geofence_id,
+              geofence_name: cg.geofence_name,
+              category: cg.category || '',
+            })),
+          },
+        }));
         refreshVehicleLocations();
       } catch (err) {
         console.error('Failed to update vehicle location:', err);

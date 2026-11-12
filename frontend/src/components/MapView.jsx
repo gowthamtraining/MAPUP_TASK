@@ -15,12 +15,12 @@ function createVehicleIcon(vehicle, isSelected) {
   const isTruck = vehicle.vehicle_type?.toLowerCase() === 'truck';
   const color = isSelected ? '#a855f7' : '#38bdf8';
   const html = `
-    <div style="display:flex; flex-direction:column; align-items:center; transform: translate(-50%, -100%); cursor:pointer;">
-      <div style="background:#0f172a; color:#fff; border: 1.5px solid ${color}; border-radius: 6px; padding: 2px 6px; font-size: 10px; font-weight: 700; white-space:nowrap; box-shadow: 0 4px 6px rgba(0,0,0,0.4); margin-bottom: 2px;">
+    <div style="display:flex; flex-direction:column; align-items:center; cursor:pointer; width:80px;">
+      <div style="background:#0f172a; color:#fff; border: 1.5px solid ${color}; border-radius: 6px; padding: 1px 5px; font-size: 10px; font-weight: 700; white-space:nowrap; box-shadow: 0 4px 6px rgba(0,0,0,0.5); margin-bottom: 2px;">
         ${vehicle.vehicle_number}
       </div>
       <div style="position:relative; width: 34px; height: 34px; background: ${color}; border-radius: 50%; display:flex; align-items:center; justify-content:center; box-shadow: 0 0 12px ${color}88;">
-        <span style="color:#0f172a; font-weight:900; font-size:16px;">
+        <span style="color:#0f172a; font-weight:900; font-size:16px; line-height:1;">
           ${isTruck ? '🚛' : '🚗'}
         </span>
         <div style="position:absolute; width: 44px; height: 44px; border: 2px solid ${color}; border-radius:50%; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.75;"></div>
@@ -30,7 +30,8 @@ function createVehicleIcon(vehicle, isSelected) {
   return L.divIcon({
     html,
     className: 'custom-vehicle-marker',
-    iconSize: [0, 0],
+    iconSize: [80, 56],
+    iconAnchor: [40, 38], // Exact center of the 34px circular icon
   });
 }
 
@@ -107,6 +108,13 @@ export default function MapView({
                 fillOpacity: 0.25,
                 weight: 2.5,
                 dashArray: g.category === 'restricted_zone' ? '6, 6' : undefined,
+              }}
+              eventHandlers={{
+                click: (e) => {
+                  if (mapMode === 'draw' || mapMode === 'teleport') {
+                    onMapClick(e.latlng.lat, e.latlng.lng);
+                  }
+                },
               }}
             >
               <Tooltip sticky>

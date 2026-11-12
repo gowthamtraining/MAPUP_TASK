@@ -1,6 +1,7 @@
 package geospatial
 
 import (
+	"fmt"
 	"mapup-geofence/internal/domain"
 	"testing"
 )
@@ -78,4 +79,24 @@ func TestContainsPoint(t *testing.T) {
 	if !ContainsPoint(square, 37.7750, -122.4100) {
 		t.Errorf("expected boundary point to be inside (ST_Covers semantics)")
 	}
+}
+
+func TestUserPoint(t *testing.T) {
+	poly := []domain.Coordinate{
+		{37.7968295246849, -122.42694854741788},
+		{37.787748660086685, -122.42729187017179},
+		{37.78801974683209, -122.4060058594296},
+		{37.79737163054975, -122.40789413457605},
+		{37.7968295246849, -122.42694854741788},
+	}
+
+	// The current coordinate of KA-01-AB-1234
+	lat, lon := 37.7973636708458, -122.41733551030848
+	inside := ContainsPoint(poly, lat, lon)
+	fmt.Printf("\n--> Current KA-01-AB-1234 coordinate inside?: %v\n", inside)
+
+	// Middle of the polygon
+	midLat, midLon := 37.7920, -122.4160
+	midInside := ContainsPoint(poly, midLat, midLon)
+	fmt.Printf("--> Inside middle coordinate?: %v\n", midInside)
 }
