@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 type PostgresRepository struct {
@@ -259,7 +259,7 @@ func (p *PostgresRepository) GetVehicleCurrentGeofenceIDs(ctx context.Context, v
 	row := p.db.QueryRowContext(ctx, query, vehicleID)
 
 	var ids []string
-	if err := row.Scan((*pqStringArray)(&ids)); err != nil {
+	if err := row.Scan(pq.Array(&ids)); err != nil {
 		if err == sql.ErrNoRows {
 			return []string{}, nil
 		}
@@ -272,7 +272,7 @@ func (p *PostgresRepository) UpdateVehicleCurrentGeofenceIDs(ctx context.Context
 	query := `INSERT INTO vehicle_current_geofences (vehicle_id, geofence_ids, updated_at)
 		VALUES ($1, $2, NOW())
 		ON CONFLICT (vehicle_id) DO UPDATE SET geofence_ids = EXCLUDED.geofence_ids, updated_at = NOW()`
-	_, err := p.db.ExecContext(ctx, query, vehicleID, (*pqStringArray)(&geofenceIDs))
+	_, err := p.db.ExecContext(ctx, query, vehicleID, pq.Array(geofenceIDs))
 	return err
 }
 

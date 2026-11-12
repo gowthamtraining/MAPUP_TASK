@@ -146,7 +146,9 @@ func (s *TrackerService) ProcessLocation(ctx context.Context, req LocationUpdate
 	}
 
 	// Update vehicle's current geofence state in DB
-	_ = s.repo.UpdateVehicleCurrentGeofenceIDs(ctx, req.VehicleID, currentInsideIDs)
+	if err := s.repo.UpdateVehicleCurrentGeofenceIDs(ctx, req.VehicleID, currentInsideIDs); err != nil {
+		log.Printf("ERROR updating vehicle current geofence IDs for %s: %v", req.VehicleID, err)
+	}
 
 	// 5. Evaluate alert rules & trigger real-time alerts asynchronously
 	allRules, _ := s.repo.GetAllAlertRules(ctx)
@@ -280,6 +282,27 @@ func (s *TrackerService) GetVehicleLocationAndStatus(ctx context.Context, vehicl
 				GeofenceName: g.Name,
 				Category:     g.Category,
 			})
+		}
+	}
+
+	// Dynamic calculation fallback: if database had no record but vehicle has location,
+	// test containment against all active geofences
+	if len(currentGeofences) == 0 && loc != nil {
+		if activeGeos, err := s.repo.GetAllActiveGeofences(ctx); err == nil {
+			resolvedIDs := make([]string, 0)
+			for _, g := range activeGeos {
+				if geospatial.ContainsPoint(g.Coordinates, loc.Latitude, loc.Longitude) {
+					currentGeofences = append(currentGeofences, domain.VehicleGeofenceDetail{
+						GeofenceID:   g.ID,
+						GeofenceName: g.Name,
+						Category:     g.Category,
+					})
+					resolvedIDs = append(resolvedIDs, g.ID)
+				}
+			}
+			if len(resolvedIDs) > 0 {
+				_ = s.repo.UpdateVehicleCurrentGeofenceIDs(ctx, vehicleID, resolvedIDs)
+			}
 		}
 	}
 
