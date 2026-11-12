@@ -18,7 +18,6 @@ import GeofenceManager from './components/GeofenceManager';
 import VehicleManager from './components/VehicleManager';
 import AlertRuleManager from './components/AlertRuleManager';
 import ViolationHistory from './components/ViolationHistory';
-import SimulationBar from './components/SimulationBar';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'history'
@@ -279,27 +278,21 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Left/Center Interactive Map View + Simulation Bar */}
-            <div className="flex-1 flex flex-col gap-2.5 min-w-0">
-              <SimulationBar
+            {/* Left/Center Interactive Map View */}
+            <div className="flex-1 relative min-w-0 min-h-0">
+              <MapView
+                geofences={geofences}
                 vehicles={vehicles}
+                vehicleLocations={vehicleLocations}
                 selectedVehicleId={selectedVehicleId}
-                onSimulationTriggered={refreshVehicleLocations}
+                onSelectVehicle={(id) => {
+                  setSelectedVehicleId(id);
+                  setActiveSidebarTab('vehicles');
+                }}
+                mapMode={mapMode}
+                drawnPoints={drawnPoints}
+                onMapClick={handleMapClick}
               />
-              <div className="flex-1 relative min-h-0">
-                <MapView
-                  geofences={geofences}
-                  vehicles={vehicles}
-                  vehicleLocations={vehicleLocations}
-                  selectedVehicleId={selectedVehicleId}
-                  onSelectVehicle={(id) => {
-                    setSelectedVehicleId(id);
-                    setActiveSidebarTab('vehicles');
-                  }}
-                  mapMode={mapMode}
-                  drawnPoints={drawnPoints}
-                  onMapClick={handleMapClick}
-                />
 
                 {/* Floating Map Legend */}
                 <div className="absolute bottom-4 left-4 z-[900] bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-lg p-2.5 shadow-xl text-[11px] text-slate-300">
@@ -326,7 +319,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            </div>
 
             {/* Right Control Panels Drawer */}
             <div className="w-80 md:w-96 flex flex-col gap-2 shrink-0">
