@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -65,6 +66,7 @@ func main() {
 	locationHandler := handler.NewLocationHandler(trackerService)
 	alertHandler := handler.NewAlertHandler(alertService)
 	violationHandler := handler.NewViolationHandler(alertService)
+	authHandler := handler.NewAuthHandler()
 	wsHandler := handler.NewWebSocketHandler(hub)
 
 	// Router setup
@@ -80,11 +82,14 @@ func main() {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-API-Key", "X-Vehicle-ID"},
+		ExposedHeaders:   []string{"Link", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+
+	// API Authentication Middleware (Bonus Requirement: API Key & JWT Bearer Token support)
+	r.Use(middleware.AuthMiddleware)
 
 	// Health check endpoint
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -93,8 +98,25 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"mapup-geofence"}`))
 	})
 
+	// Auth Endpoints (Bonus Requirement)
+	r.Post("/auth/token", authHandler.GenerateToken)
+	r.Post("/auth/login", authHandler.GenerateToken)
+	r.Get("/auth/verify", authHandler.VerifyToken)
+
 	// Initialize Rate Limiter for Location Updates (Bonus Requirement)
-	rateLimiter := middleware.NewRateLimiter(25, 40, time.Second)
+	rateRPS := 25
+	burstCap := 40
+	if rpsStr := os.Getenv("RATE_LIMIT_RPS"); rpsStr != "" {
+		if val, err := strconv.Atoi(rpsStr); err == nil && val > 0 {
+			rateRPS = val
+		}
+	}
+	if capStr := os.Getenv("RATE_LIMIT_BURST"); capStr != "" {
+		if val, err := strconv.Atoi(capStr); err == nil && val > 0 {
+			burstCap = val
+		}
+	}
+	rateLimiter := middleware.NewRateLimiter(rateRPS, burstCap, time.Second)
 
 	// Required Endpoints
 	r.Post("/geofences", geofenceHandler.CreateGeofence)

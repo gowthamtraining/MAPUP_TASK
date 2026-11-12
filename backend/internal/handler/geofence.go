@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"mapup-geofence/internal/geospatial"
+	"mapup-geofence/internal/pagination"
 	"mapup-geofence/internal/service"
 	"net/http"
 	"time"
@@ -35,7 +36,7 @@ func (h *GeofenceHandler) CreateGeofence(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusCreated, res, start)
 }
 
-// GetGeofences handles GET /geofences?category=...
+// GetGeofences handles GET /geofences?category=...&page=...&limit=...
 func (h *GeofenceHandler) GetGeofences(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -53,8 +54,17 @@ func (h *GeofenceHandler) GetGeofences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	params := pagination.Parse(r)
+	paginatedList, meta := pagination.PaginateSlice(list, params)
+
 	response := map[string]interface{}{
-		"geofences": list,
+		"geofences": paginatedList,
+	}
+	if params.Enabled {
+		response["total_count"] = meta.TotalCount
+		response["page"] = meta.Page
+		response["limit"] = meta.Limit
+		response["total_pages"] = meta.TotalPages
 	}
 
 	RespondJSON(w, http.StatusOK, response, start)

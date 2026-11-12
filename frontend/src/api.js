@@ -1,7 +1,13 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-const WS_BASE = import.meta.env.VITE_WS_URL || (API_BASE.replace(/^http/, 'ws') + '/ws/alerts');
+const API_KEY = import.meta.env.VITE_API_KEY || 'mapup-secret-key-2025';
+const WS_BASE = import.meta.env.VITE_WS_URL || (API_BASE.replace(/^http/, 'ws') + '/ws/alerts?api_key=' + API_KEY);
 
-export { API_BASE, WS_BASE };
+export { API_BASE, WS_BASE, API_KEY };
+
+const authHeaders = {
+  'Content-Type': 'application/json',
+  'X-API-Key': API_KEY,
+};
 
 async function handleResponse(res) {
   const json = await res.json().catch(() => ({}));
@@ -12,43 +18,68 @@ async function handleResponse(res) {
 }
 
 export const api = {
-  // Geofences
-  async getGeofences(category = '') {
+  // Authentication
+  async getAuthToken(username = 'admin', password = 'password') {
+    const res = await fetch(`${API_BASE}/auth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    return handleResponse(res);
+  },
+
+  async verifyAuth() {
+    const res = await fetch(`${API_BASE}/auth/verify`, {
+      headers: authHeaders,
+    });
+    return handleResponse(res);
+  },
+
+  // Geofences with pagination support
+  async getGeofences(category = '', page = 0, limit = 0) {
     const url = new URL(`${API_BASE}/geofences`);
     if (category) url.searchParams.set('category', category);
-    const res = await fetch(url);
+    if (page > 0) url.searchParams.set('page', page);
+    if (limit > 0) url.searchParams.set('limit', limit);
+    const res = await fetch(url, { headers: authHeaders });
     return handleResponse(res);
   },
 
   async createGeofence(data) {
     const res = await fetch(`${API_BASE}/geofences`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify(data),
     });
     return handleResponse(res);
   },
 
-  // Vehicles
-  async getVehicles() {
-    const res = await fetch(`${API_BASE}/vehicles`);
+  // Vehicles with pagination support
+  async getVehicles(page = 0, limit = 0) {
+    const url = new URL(`${API_BASE}/vehicles`);
+    if (page > 0) url.searchParams.set('page', page);
+    if (limit > 0) url.searchParams.set('limit', limit);
+    const res = await fetch(url, { headers: authHeaders });
     return handleResponse(res);
   },
 
   async createVehicle(data) {
     const res = await fetch(`${API_BASE}/vehicles`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify(data),
     });
     return handleResponse(res);
   },
 
-  // Location
+  // Location Updates (Rate Limited)
   async updateLocation(vehicleId, latitude, longitude, timestamp) {
     const res = await fetch(`${API_BASE}/vehicles/location`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        ...authHeaders,
+        'X-Vehicle-ID': vehicleId,
+      },
       body: JSON.stringify({
         vehicle_id: vehicleId,
         latitude: parseFloat(latitude),
@@ -60,29 +91,33 @@ export const api = {
   },
 
   async getVehicleLocation(vehicleId) {
-    const res = await fetch(`${API_BASE}/vehicles/location/${vehicleId}`);
+    const res = await fetch(`${API_BASE}/vehicles/location/${vehicleId}`, {
+      headers: authHeaders,
+    });
     return handleResponse(res);
   },
 
-  // Alerts
+  // Alerts with pagination support
   async configureAlert(data) {
     const res = await fetch(`${API_BASE}/alerts/configure`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify(data),
     });
     return handleResponse(res);
   },
 
-  async getAlerts(geofenceId = '', vehicleId = '') {
+  async getAlerts(geofenceId = '', vehicleId = '', page = 0, limit = 0) {
     const url = new URL(`${API_BASE}/alerts`);
     if (geofenceId) url.searchParams.set('geofence_id', geofenceId);
     if (vehicleId) url.searchParams.set('vehicle_id', vehicleId);
-    const res = await fetch(url);
+    if (page > 0) url.searchParams.set('page', page);
+    if (limit > 0) url.searchParams.set('limit', limit);
+    const res = await fetch(url, { headers: authHeaders });
     return handleResponse(res);
   },
 
-  // Violations History
+  // Violations History with pagination support
   async getViolations(params = {}) {
     const url = new URL(`${API_BASE}/violations/history`);
     if (params.vehicle_id) url.searchParams.set('vehicle_id', params.vehicle_id);
@@ -90,7 +125,8 @@ export const api = {
     if (params.start_date) url.searchParams.set('start_date', params.start_date);
     if (params.end_date) url.searchParams.set('end_date', params.end_date);
     if (params.limit) url.searchParams.set('limit', params.limit);
-    const res = await fetch(url);
+    if (params.page) url.searchParams.set('page', params.page);
+    const res = await fetch(url, { headers: authHeaders });
     return handleResponse(res);
   },
 };

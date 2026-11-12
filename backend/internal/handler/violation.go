@@ -1,10 +1,12 @@
 package handler
 
 import (
-	"mapup-geofence/internal/service"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
+
+	"mapup-geofence/internal/service"
 )
 
 type ViolationHandler struct {
@@ -15,7 +17,7 @@ func NewViolationHandler(service *service.AlertService) *ViolationHandler {
 	return &ViolationHandler{service: service}
 }
 
-// GetViolationHistory handles GET /violations/history
+// GetViolationHistory handles GET /violations/history?vehicle_id=...&geofence_id=...&start_date=...&end_date=...&limit=...&page=...
 func (h *ViolationHandler) GetViolationHistory(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -25,11 +27,22 @@ func (h *ViolationHandler) GetViolationHistory(w http.ResponseWriter, r *http.Re
 	startDateStr := q.Get("start_date")
 	endDateStr := q.Get("end_date")
 	limitStr := q.Get("limit")
+	pageStr := q.Get("page")
 
 	limit := 50
 	if limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
+		}
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	page := 1
+	if pageStr != "" {
+		if parsedPage, err := strconv.Atoi(pageStr); err == nil && parsedPage > 0 {
+			page = parsedPage
 		}
 	}
 
@@ -53,9 +66,17 @@ func (h *ViolationHandler) GetViolationHistory(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	totalPages := int(math.Ceil(float64(totalCount) / float64(limit)))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
 	response := map[string]interface{}{
 		"violations":  violations,
 		"total_count": totalCount,
+		"page":        page,
+		"limit":       limit,
+		"total_pages": totalPages,
 	}
 
 	RespondJSON(w, http.StatusOK, response, start)
