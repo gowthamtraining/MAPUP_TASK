@@ -266,6 +266,7 @@ export default function App() {
             <div className="flex-1 flex flex-col gap-2.5 min-w-0">
               <SimulationBar
                 vehicles={vehicles}
+                selectedVehicleId={selectedVehicleId}
                 onSimulationTriggered={refreshVehicleLocations}
               />
               <div className="flex-1 relative min-h-0">

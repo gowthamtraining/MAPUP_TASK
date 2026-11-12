@@ -2,85 +2,84 @@ import React, { useState } from 'react';
 import { Play, ShieldAlert, Sparkles, Navigation, RotateCcw } from 'lucide-react';
 import { api } from '../api';
 
-export default function SimulationBar({ vehicles = [], onSimulationTriggered }) {
+export default function SimulationBar({ vehicles = [], selectedVehicleId, onSimulationTriggered }) {
   const [running, setRunning] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
+  const targetVehicle = vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
+
   const triggerStep = async (vehicleId, lat, lon, stepName) => {
-    setStatusMsg(`Simulating: ${stepName}...`);
+    setStatusMsg(`${stepName}`);
     await api.updateLocation(vehicleId, lat, lon);
     onSimulationTriggered && onSimulationTriggered();
     await new Promise((r) => setTimeout(r, 1200));
   };
 
-  // Full Trip Simulation: moves a vehicle through outside -> Downtown Delivery -> Exit -> Restricted Breach
+  // Full Trip Simulation: moves the vehicle through outside -> Downtown Delivery -> Exit -> Restricted Breach
   const runFullTripSimulation = async () => {
-    if (vehicles.length === 0) return;
-    const vehicle = vehicles[0];
+    if (!targetVehicle) return;
     setRunning(true);
 
     try {
-      // 1. Outside
-      await triggerStep(vehicle.id, 37.7650, -122.4300, `${vehicle.vehicle_number} starting trip (outside)`);
-      // 2. Enter Downtown Delivery Zone (Entry alert)
-      await triggerStep(vehicle.id, 37.7780, -122.4150, `${vehicle.vehicle_number} entering Downtown Delivery Zone`);
-      // 3. Move within delivery zone
-      await triggerStep(vehicle.id, 37.7810, -122.4120, `${vehicle.vehicle_number} moving in Delivery Zone`);
-      // 4. Exit delivery zone
-      await triggerStep(vehicle.id, 37.7880, -122.4050, `${vehicle.vehicle_number} exiting Delivery Zone`);
-      // 5. Enter Restricted Security Harbor (Immediate Breach Alert!)
-      await triggerStep(vehicle.id, 37.7950, -122.3950, `🚨 ${vehicle.vehicle_number} ENTERING RESTRICTED ZONE!`);
-      setStatusMsg('Trip Simulation Completed Successfully!');
+      // Step 1: Start outside all geofences
+      await triggerStep(targetVehicle.id, 37.7650, -122.4300, `Step 1/5: ${targetVehicle.vehicle_number} starting outside all zones`);
+      // Step 2: Enter Downtown Delivery Zone (triggers delivery_zone entry alert)
+      await triggerStep(targetVehicle.id, 37.7780, -122.4150, `Step 2/5: ${targetVehicle.vehicle_number} entered Downtown Delivery Zone`);
+      // Step 3: Move inside delivery zone (no duplicate alert)
+      await triggerStep(targetVehicle.id, 37.7810, -122.4120, `Step 3/5: ${targetVehicle.vehicle_number} navigating within Delivery Zone`);
+      // Step 4: Exit delivery zone (triggers delivery_zone exit alert)
+      await triggerStep(targetVehicle.id, 37.7880, -122.4050, `Step 4/5: ${targetVehicle.vehicle_number} exited Delivery Zone`);
+      // Step 5: Breaches Port Security Restricted Zone (triggers instant HIGH-PRIORITY restricted alert!)
+      await triggerStep(targetVehicle.id, 37.7950, -122.3950, `Step 5/5: 🚨 ${targetVehicle.vehicle_number} BREACHED RESTRICTED ZONE!`);
+      setStatusMsg(`Trip Simulation Complete for ${targetVehicle.vehicle_number}!`);
     } catch (err) {
       console.error(err);
       setStatusMsg('Simulation encountered an error: ' + err.message);
     } finally {
       setRunning(false);
-      setTimeout(() => setStatusMsg(''), 4000);
+      setTimeout(() => setStatusMsg(''), 5000);
     }
   };
 
   // Quick Restricted Zone breach trigger
   const triggerRestrictedBreach = async () => {
-    if (vehicles.length === 0) return;
-    const vehicle = vehicles[0];
+    if (!targetVehicle) return;
     setRunning(true);
-    setStatusMsg(`Breaching Restricted Zone with ${vehicle.vehicle_number}...`);
+    setStatusMsg(`Breaching Restricted Zone with ${targetVehicle.vehicle_number}...`);
     try {
-      // First move outside to ensure transition
-      await api.updateLocation(vehicle.id, 37.7850, -122.4050);
+      // Move outside first to ensure transition
+      await api.updateLocation(targetVehicle.id, 37.7850, -122.4050);
       await new Promise((r) => setTimeout(r, 600));
-      // Now enter restricted zone
-      await api.updateLocation(vehicle.id, 37.7950, -122.3950);
+      // Enter restricted zone (fires WebSocket alert)
+      await api.updateLocation(targetVehicle.id, 37.7950, -122.3950);
       onSimulationTriggered && onSimulationTriggered();
-      setStatusMsg('🚨 Restricted Zone breach triggered live via WebSocket!');
+      setStatusMsg(`🚨 Restricted Zone breach triggered with ${targetVehicle.vehicle_number}!`);
     } catch (err) {
       setStatusMsg('Error: ' + err.message);
     } finally {
       setRunning(false);
-      setTimeout(() => setStatusMsg(''), 4000);
+      setTimeout(() => setStatusMsg(''), 5000);
     }
   };
 
   // Quick Delivery Entry trigger
   const triggerDeliveryEntry = async () => {
-    if (vehicles.length === 0) return;
-    const vehicle = vehicles[0];
+    if (!targetVehicle) return;
     setRunning(true);
-    setStatusMsg(`Entering Delivery Zone with ${vehicle.vehicle_number}...`);
+    setStatusMsg(`Entering Delivery Zone with ${targetVehicle.vehicle_number}...`);
     try {
       // Move outside first
-      await api.updateLocation(vehicle.id, 37.7650, -122.4300);
+      await api.updateLocation(targetVehicle.id, 37.7650, -122.4300);
       await new Promise((r) => setTimeout(r, 600));
-      // Move inside
-      await api.updateLocation(vehicle.id, 37.7780, -122.4150);
+      // Enter delivery zone
+      await api.updateLocation(targetVehicle.id, 37.7780, -122.4150);
       onSimulationTriggered && onSimulationTriggered();
-      setStatusMsg(`Entered Downtown Delivery Zone!`);
+      setStatusMsg(`Entered Downtown Delivery Zone with ${targetVehicle.vehicle_number}!`);
     } catch (err) {
       setStatusMsg('Error: ' + err.message);
     } finally {
       setRunning(false);
-      setTimeout(() => setStatusMsg(''), 4000);
+      setTimeout(() => setStatusMsg(''), 5000);
     }
   };
 
