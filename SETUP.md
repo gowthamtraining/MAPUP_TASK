@@ -271,3 +271,51 @@ For your video submission, follow this structured agenda:
    - JWT authentication for drivers and fleet managers.
    - Redis-backed rate limiting on `/vehicles/location` per vehicle API key.
    - Mutual TLS (mTLS) for IoT telemetry devices.
+
+---
+
+## 🐳 Docker Hub Push & Cloud Deployment Guide
+
+### 1. Build & Push Backend to Docker Hub
+
+The backend is containerized in [`backend/Dockerfile`](backend/Dockerfile).
+
+```bash
+# Step 1: Log in to Docker Hub (replace with your credentials)
+docker login
+
+# Step 2: Tag the local image with your Docker Hub username
+docker tag mapup-backend:latest <your-dockerhub-username>/mapup-geofence-backend:latest
+
+# Step 3: Push to Docker Hub
+docker push <your-dockerhub-username>/mapup-geofence-backend:latest
+```
+
+### 2. Backend Cloud Deployment (e.g. Render / Railway / Koyeb)
+
+**Option A: Deploy on Render (Recommended - Free Tier & WebSocket Support)**
+1. Go to [render.com](https://render.com) and create a **New Web Service**.
+2. Connect your GitHub repository or enter your Docker Hub image:
+   `docker.io/<your-dockerhub-username>/mapup-geofence-backend:latest`
+3. Set Environment Variables:
+   - `PORT`: `8080`
+   - `DATABASE_URL`: `postgres://...` (or leave blank to use fast In-Memory mode)
+   - `API_KEY`: `mapup-secret-key-2025`
+4. Click **Deploy**. Render will generate a public HTTPS URL (e.g., `https://mapup-backend.onrender.com`).
+
+**Option B: Deploy on Railway**
+1. Go to [railway.app](https://railway.app) and create a **New Project**.
+2. Choose **Deploy from Docker Hub** $\rightarrow$ `<your-dockerhub-username>/mapup-geofence-backend:latest`.
+3. Add variable `PORT=8080`.
+4. Generate Domain $\rightarrow$ gives public URL.
+
+### 3. Frontend Deployment (Vercel / Netlify)
+
+Deploy the React application to [Vercel](https://vercel.com):
+1. Import your GitHub repository in Vercel.
+2. Set **Root Directory** to `frontend`.
+3. Framework Preset: **Vite**.
+4. Configure Environment Variables:
+   - `VITE_API_URL`: `https://<your-deployed-backend-url>`
+   - `VITE_WS_URL`: `wss://<your-deployed-backend-host>/ws/alerts`
+5. Click **Deploy**. Vercel will build and serve your app globally.
