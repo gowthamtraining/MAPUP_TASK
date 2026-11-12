@@ -26,6 +26,13 @@
 
 ---
 
+## 🌐 Live Production Deployments
+- **Backend REST API**: [`https://mapup-geofence-backend-latest.onrender.com`](https://mapup-geofence-backend-latest.onrender.com)
+- **Live WebSocket Feed**: `wss://mapup-geofence-backend-latest.onrender.com/ws/alerts`
+- **Health Check**: [`https://mapup-geofence-backend-latest.onrender.com/health`](https://mapup-geofence-backend-latest.onrender.com/health)
+
+---
+
 ## 👥 Assessment Collaborators
 When creating the private GitHub repository, ensure the following MapUp collaborators are invited:
 - `vedantp@mapup.ai`
