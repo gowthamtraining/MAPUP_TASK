@@ -160,7 +160,7 @@ func (p *PostgresRepository) GetGeofences(ctx context.Context, category string) 
 	}
 	defer rows.Close()
 
-	var result []domain.Geofence
+	result := make([]domain.Geofence, 0)
 	for rows.Next() {
 		var g domain.Geofence
 		var coordsJSON string
@@ -213,7 +213,7 @@ func (p *PostgresRepository) GetVehicles(ctx context.Context) ([]domain.Vehicle,
 	}
 	defer rows.Close()
 
-	var result []domain.Vehicle
+	result := make([]domain.Vehicle, 0)
 	for rows.Next() {
 		var v domain.Vehicle
 		if err := rows.Scan(&v.ID, &v.VehicleNumber, &v.DriverName, &v.VehicleType, &v.Phone, &v.Status, &v.CreatedAt); err != nil {
@@ -310,7 +310,7 @@ func (p *PostgresRepository) GetAlertRules(ctx context.Context, geofenceID, vehi
 	}
 	defer rows.Close()
 
-	var rules []domain.AlertRule
+	rules := make([]domain.AlertRule, 0)
 	for rows.Next() {
 		var r domain.AlertRule
 		var gName sql.NullString
@@ -396,7 +396,7 @@ func (p *PostgresRepository) GetViolations(ctx context.Context, vehicleID, geofe
 	}
 	defer rows.Close()
 
-	var result []domain.Violation
+	result := make([]domain.Violation, 0)
 	for rows.Next() {
 		var v domain.Violation
 		if err := rows.Scan(&v.ID, &v.VehicleID, &v.VehicleNumber, &v.GeofenceID, &v.GeofenceName, &v.EventType, &v.Latitude, &v.Longitude, &v.Timestamp); err != nil {

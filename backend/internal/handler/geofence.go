@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"mapup-geofence/internal/geospatial"
 	"mapup-geofence/internal/service"
 	"net/http"
 	"time"
@@ -39,6 +40,13 @@ func (h *GeofenceHandler) GetGeofences(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	category := r.URL.Query().Get("category")
+	if category != "" {
+		if err := geospatial.ValidateCategory(category); err != nil {
+			RespondError(w, http.StatusBadRequest, err.Error(), start)
+			return
+		}
+	}
+
 	list, err := h.service.GetGeofences(r.Context(), category)
 	if err != nil {
 		RespondError(w, http.StatusInternalServerError, err.Error(), start)

@@ -223,4 +223,29 @@ func seedSampleData(repo repository.Repository) {
 		Timestamp: time.Now().UTC().Add(-5 * time.Minute),
 	})
 	_ = repo.UpdateVehicleCurrentGeofenceIDs(ctx, van1.ID, []string{downtownDelivery.ID})
+
+	// Sample Alert Rule (monitoring entry into Downtown Delivery Zone)
+	_ = repo.CreateAlertRule(ctx, &domain.AlertRule{
+		AlertID:       "alert_demo_01",
+		GeofenceID:    downtownDelivery.ID,
+		GeofenceName:  downtownDelivery.Name,
+		VehicleID:     &truck1.ID,
+		VehicleNumber: &truck1.VehicleNumber,
+		EventType:     domain.EventTypeEntry,
+		Status:        "active",
+		CreatedAt:     time.Now().UTC().Add(-15 * time.Minute),
+	})
+
+	// Sample Initial Violation Record (entry by van into delivery zone)
+	_ = repo.RecordViolation(ctx, &domain.Violation{
+		ID:            "viol_demo_01",
+		VehicleID:     van1.ID,
+		VehicleNumber: van1.VehicleNumber,
+		GeofenceID:    downtownDelivery.ID,
+		GeofenceName:  downtownDelivery.Name,
+		EventType:     domain.EventTypeEntry,
+		Latitude:      37.7780,
+		Longitude:     -122.4150,
+		Timestamp:     time.Now().UTC().Add(-5 * time.Minute),
+	})
 }

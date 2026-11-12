@@ -24,7 +24,31 @@ export default function GeofenceManager({
   const [category, setCategory] = useState('delivery_zone');
   const [coordText, setCoordText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [displayGeofences, setDisplayGeofences] = useState(geofences);
   const [error, setError] = useState('');
+
+  // Fetch geofences from backend with optional ?category= filter query
+  React.useEffect(() => {
+    let isMounted = true;
+    const fetchFiltered = async () => {
+      setFilterLoading(true);
+      try {
+        const res = await api.getGeofences(filterCategory);
+        if (isMounted) {
+          setDisplayGeofences(res.geofences || []);
+        }
+      } catch (err) {
+        console.error('Failed to filter geofences by category:', err);
+      } finally {
+        if (isMounted) setFilterLoading(false);
+      }
+    };
+    fetchFiltered();
+    return () => {
+      isMounted = false;
+    };
+  }, [filterCategory, geofences]);
 
   // Handle open modal from drawn points
   const handleOpenModal = () => {
@@ -90,9 +114,7 @@ export default function GeofenceManager({
     }
   };
 
-  const filteredGeofences = filterCategory
-    ? geofences.filter((g) => g.category === filterCategory)
-    : geofences;
+  const filteredGeofences = displayGeofences;
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col h-full">
