@@ -98,9 +98,11 @@ export default function MapView({
         {geofences.map((g) => {
           const style = CATEGORY_COLORS[g.category] || { stroke: '#94a3b8', fill: '#94a3b8' };
           const positions = g.coordinates.map((c) => [c[0], c[1]]);
+          const isInteractive = mapMode === 'view';
+
           return (
             <Polygon
-              key={g.id}
+              key={`${g.id}-${mapMode}`}
               positions={positions}
               pathOptions={{
                 color: style.stroke,
@@ -112,35 +114,42 @@ export default function MapView({
               eventHandlers={{
                 click: (e) => {
                   if (mapMode === 'draw' || mapMode === 'teleport') {
+                    if (e.originalEvent) {
+                      e.originalEvent.stopPropagation();
+                    }
                     onMapClick(e.latlng.lat, e.latlng.lng);
                   }
                 },
               }}
             >
-              <Tooltip sticky>
-                <div className="p-1">
-                  <div className="font-bold text-slate-900">{g.name}</div>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    {g.category.replace('_', ' ')}
-                  </div>
-                </div>
-              </Tooltip>
-              <Popup>
-                <div className="text-slate-900 p-1 min-w-[180px]">
-                  <div className="flex items-center gap-2 mb-1">
-                    {g.category === 'restricted_zone' && <ShieldAlert className="w-5 h-5 text-red-500" />}
-                    <h3 className="font-bold text-sm">{g.name}</h3>
-                  </div>
-                  <span
-                    className="inline-block text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded text-white mb-2"
-                    style={{ backgroundColor: style.stroke }}
-                  >
-                    {g.category.replace('_', ' ')}
-                  </span>
-                  <p className="text-xs text-slate-600 mb-2">{g.description || 'No description provided'}</p>
-                  <div className="text-[10px] text-slate-400">ID: {g.id}</div>
-                </div>
-              </Popup>
+              {isInteractive && (
+                <>
+                  <Tooltip sticky>
+                    <div className="p-1">
+                      <div className="font-bold text-slate-900">{g.name}</div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        {g.category.replace('_', ' ')}
+                      </div>
+                    </div>
+                  </Tooltip>
+                  <Popup>
+                    <div className="text-slate-900 p-1 min-w-[180px]">
+                      <div className="flex items-center gap-2 mb-1">
+                        {g.category === 'restricted_zone' && <ShieldAlert className="w-5 h-5 text-red-500" />}
+                        <h3 className="font-bold text-sm">{g.name}</h3>
+                      </div>
+                      <span
+                        className="inline-block text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded text-white mb-2"
+                        style={{ backgroundColor: style.stroke }}
+                      >
+                        {g.category.replace('_', ' ')}
+                      </span>
+                      <p className="text-xs text-slate-600 mb-2">{g.description || 'No description provided'}</p>
+                      <div className="text-[10px] text-slate-400">ID: {g.id}</div>
+                    </div>
+                  </Popup>
+                </>
+              )}
             </Polygon>
           );
         })}
@@ -180,58 +189,70 @@ export default function MapView({
           if (!locData || !locData.current_location) return null;
           const pos = [locData.current_location.latitude, locData.current_location.longitude];
           const isSelected = selectedVehicleId === v.id;
+          const isInteractive = mapMode === 'view';
 
           return (
             <Marker
-              key={v.id}
+              key={`${v.id}-${mapMode}`}
               position={pos}
               icon={createVehicleIcon(v, isSelected)}
               eventHandlers={{
-                click: () => onSelectVehicle && onSelectVehicle(v.id),
+                click: (e) => {
+                  if (mapMode === 'draw' || mapMode === 'teleport') {
+                    if (e.originalEvent) {
+                      e.originalEvent.stopPropagation();
+                    }
+                    onMapClick(pos[0], pos[1]);
+                  } else {
+                    onSelectVehicle && onSelectVehicle(v.id);
+                  }
+                },
               }}
             >
-              <Popup>
-                <div className="text-slate-900 p-1 min-w-[200px]">
-                  <div className="flex items-center justify-between border-b pb-1 mb-2">
-                    <span className="font-bold text-sm text-slate-800">{v.vehicle_number}</span>
-                    <span className="text-xs bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded capitalize">
-                      {v.vehicle_type}
-                    </span>
-                  </div>
-                  <div className="text-xs space-y-1 mb-2">
-                    <div>
-                      <span className="text-slate-500">Driver:</span> <strong className="text-slate-700">{v.driver_name}</strong>
+              {isInteractive && (
+                <Popup>
+                  <div className="text-slate-900 p-1 min-w-[200px]">
+                    <div className="flex items-center justify-between border-b pb-1 mb-2">
+                      <span className="font-bold text-sm text-slate-800">{v.vehicle_number}</span>
+                      <span className="text-xs bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded capitalize">
+                        {v.vehicle_type}
+                      </span>
                     </div>
-                    <div>
-                      <span className="text-slate-500">Phone:</span> {v.phone}
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Coordinates:</span>{' '}
-                      {pos[0].toFixed(5)}, {pos[1].toFixed(5)}
-                    </div>
-                  </div>
-
-                  <div className="border-t pt-1.5">
-                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                      Current Zones:
-                    </div>
-                    {locData.current_geofences && locData.current_geofences.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {locData.current_geofences.map((cg) => (
-                          <span
-                            key={cg.geofence_id}
-                            className="text-[10px] bg-blue-100 text-blue-800 font-medium px-1.5 py-0.5 rounded"
-                          >
-                            {cg.geofence_name}
-                          </span>
-                        ))}
+                    <div className="text-xs space-y-1 mb-2">
+                      <div>
+                        <span className="text-slate-500">Driver:</span> <strong className="text-slate-700">{v.driver_name}</strong>
                       </div>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic">Outside all geofences</span>
-                    )}
+                      <div>
+                        <span className="text-slate-500">Phone:</span> {v.phone}
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Coordinates:</span>{' '}
+                        {pos[0].toFixed(5)}, {pos[1].toFixed(5)}
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-1.5">
+                      <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        Current Zones:
+                      </div>
+                      {locData.current_geofences && locData.current_geofences.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {locData.current_geofences.map((cg) => (
+                            <span
+                              key={cg.geofence_id}
+                              className="text-[10px] bg-blue-100 text-blue-800 font-medium px-1.5 py-0.5 rounded"
+                            >
+                              {cg.geofence_name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic">Outside all geofences</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </Popup>
+                </Popup>
+              )}
             </Marker>
           );
         })}
