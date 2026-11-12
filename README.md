@@ -16,13 +16,13 @@
 
 ---
 
-## 🐳 Docker Hub Image
-- **Repository**: [`gowtham095/mapup-geofence-backend`](https://hub.docker.com/r/gowtham095/mapup-geofence-backend)
-- **Tag**: `latest`
-- **Docker Pull**:
-  ```bash
-  docker pull gowtham095/mapup-geofence-backend:latest
-  ```
+## 🐳 Docker Hub Images
+- **Backend API & Real-Time Alert Engine**:
+  - Image: [`gowtham095/mapup-geofence-backend:latest`](https://hub.docker.com/r/gowtham095/mapup-geofence-backend)
+  - Pull Command: `docker pull gowtham095/mapup-geofence-backend:latest`
+- **Frontend Web Dashboard (Nginx)**:
+  - Image: [`gowtham095/mapup-geofence-frontend:latest`](https://hub.docker.com/r/gowtham095/mapup-geofence-frontend)
+  - Pull Command: `docker pull gowtham095/mapup-geofence-frontend:latest`
 
 ---
 

@@ -276,22 +276,30 @@ For your video submission, follow this structured agenda:
 
 ## 🐳 Docker Hub Push & Cloud Deployment Guide
 
-### 1. Build & Push Backend to Docker Hub
+### 1. Build & Push Images to Docker Hub
 
-The backend is containerized in [`backend/Dockerfile`](backend/Dockerfile).
+Both services are containerized with production-ready multi-stage Dockerfiles.
 
 ```bash
-# Step 1: Log in to Docker Hub (replace with your credentials)
-docker login
+# Push Backend
+docker tag mapup-backend:latest gowtham095/mapup-geofence-backend:latest
+docker push gowtham095/mapup-geofence-backend:latest
 
-# Step 2: Tag the local image with your Docker Hub username
-docker tag mapup-backend:latest <your-dockerhub-username>/mapup-geofence-backend:latest
-
-# Step 3: Push to Docker Hub
-docker push <your-dockerhub-username>/mapup-geofence-backend:latest
+# Push Frontend
+docker tag mapup-frontend:latest gowtham095/mapup-geofence-frontend:latest
+docker push gowtham095/mapup-geofence-frontend:latest
 ```
 
-### 2. Backend Cloud Deployment (e.g. Render / Railway / Koyeb)
+### 2. Cloud Deployment (Render / Railway / Koyeb)
+
+**Option A: Deploy via Docker Images on Render (Free Tier & WebSocket Support)**
+- **Backend Service**:
+  - Image: `docker.io/gowtham095/mapup-geofence-backend:latest`
+  - Port: `8080`
+  - Environment: `PORT=8080`, `API_KEY=mapup-secret-key-2025`
+- **Frontend Service**:
+  - Image: `docker.io/gowtham095/mapup-geofence-frontend:latest`
+  - Port: `80` (Nginx)
 
 **Option A: Deploy on Render (Recommended - Free Tier & WebSocket Support)**
 1. Go to [render.com](https://render.com) and create a **New Web Service**.
