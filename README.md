@@ -16,6 +16,16 @@
 
 ---
 
+## 🐳 Docker Hub Image
+- **Repository**: [`gowtham095/mapup-geofence-backend`](https://hub.docker.com/r/gowtham095/mapup-geofence-backend)
+- **Tag**: `latest`
+- **Docker Pull**:
+  ```bash
+  docker pull gowtham095/mapup-geofence-backend:latest
+  ```
+
+---
+
 ## 👥 Assessment Collaborators
 When creating the private GitHub repository, ensure the following MapUp collaborators are invited:
 - `vedantp@mapup.ai`
