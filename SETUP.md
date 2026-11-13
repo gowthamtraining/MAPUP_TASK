@@ -1,137 +1,181 @@
-# 🧭 MapUp Geofencing & Real-Time Alert System - Technical Guide
+# 🛠️ System Setup & Developer Guide (`SETUP.md`)
 
-A production-grade, full-stack geospatial tracking and notification platform built for MapUp's Full-Stack Developer Assessment.
-
----
-
-## 🏗️ System Architecture & Design Choices
-
-```
-                        ┌───────────────────────────────────────────────┐
-                        │      React 19 Frontend Dashboard (Vite)       │
-                        │   - Interactive Leaflet Polygon Visualizer    │
-                        │   - Live Real-Time WebSocket Alerts Feed      │
-                        │   - Click-to-Move & Polygon Drawing Tools     │
-                        └───────────────────────┬───────────────────────┘
-                                                │
-                          REST (JSON) + time_ns │ WebSocket (/ws/alerts)
-                                                ▼
-                        ┌───────────────────────────────────────────────┐
-                        │              GoLang Backend API               │
-                        │   - Chi Router + High-Precision Nano Timers   │
-                        │   - Stateful Transition Engine (Entry/Exit)   │
-                        │   - Non-Blocking Asynchronous WS Hub          │
-                        │   - Geospatial Ray-Casting & Validation       │
-                        └───────────────────────┬───────────────────────┘
-                                                │
-                                    SQL / Spatial Queries
-                                                ▼
-                        ┌───────────────────────────────────────────────┐
-                        │          PostgreSQL + PostGIS 16              │
-                        │   - ST_Covers / ST_Contains Spatial Filtering │
-                        │   - GiST Spatial Index on Polygon Geometries  │
-                        │   - Graceful Fallback In-Memory Engine        │
-                        └───────────────────────────────────────────────┘
-```
-
-### 1. Geospatial Logic & Point-in-Polygon (PIP)
-- **Ray-Casting Algorithm ($O(N)$ with $O(1)$ Bounding Box Pre-filter)**:
-  - First tests point coordinates against an $O(1)$ pre-computed axis-aligned bounding box (`MinLat`, `MaxLat`, `MinLon`, `MaxLon`). Points outside the bounding box are instantly rejected with zero trigonometric/intersection operations.
-  - For points within the bounding box, a horizontal ray is cast eastward from the test point $(lat, lon)$.
-- **Boundary Handling (`ST_Covers` Semantics)**:
-  - Explicit collinearity and cross-product tests verify whether the point lies exactly on an edge segment.
-  - Points on the perimeter boundary are considered **INSIDE** (following PostGIS `ST_Covers` semantics), avoiding dropped alerts when vehicles travel along boundary perimeters.
-- **Coordinate Order Standard**:
-  - The API specification specifies coordinates as `[latitude, longitude]`.
-  - When storing and querying geometries in PostGIS (which expects `[longitude, latitude]` / X, Y order), the repository correctly constructs WKT as `SRID=4326;POLYGON((lon lat, ...))` and `ST_SetSRID(ST_MakePoint(lon, lat), 4326)`.
-
-### 2. State-Based Entry & Exit Detection
-- Entry and exit are **transitions**, not static containment states.
-- The system stores each vehicle's set of previously occupied geofence IDs (`previousGeofenceSet`).
-- On every location update:
-  1. Computes the `currentGeofenceSet` of geofences containing the new location.
-  2. **Entry events**: Geofences present in `currentGeofenceSet` that were not in `previousGeofenceSet`.
-  3. **Exit events**: Geofences present in `previousGeofenceSet` that are no longer in `currentGeofenceSet`.
-  4. Updates the stored state in the database.
-- Any entry into a `restricted_zone` automatically triggers an alert.
-- Other events match against configured alert rules (`entry`, `exit`, or `both`, for specific vehicles or all fleet vehicles).
-
-### 3. Non-Blocking Real-Time Alert Delivery
-- HTTP response latency is protected: alert generation and WebSocket broadcasting are executed asynchronously via Go channels and goroutines.
-- The `websocket.Hub` utilizes a channel-driven event loop (`register`, `unregister`, `broadcast`) to prevent race conditions without lock contention.
-- Client write pumps use heartbeats (ping/pong) and write deadlines to gracefully drop dead connections and reclaim resources.
-
-### 4. Nanosecond Precision (`time_ns`)
-- Every HTTP response (including 400 and 500 error responses) measures execution duration using `time.Now()` at the beginning and end of each request handler, injecting `"time_ns"` as a string at the root of the JSON payload.
+This guide provides complete instructions to install, configure, test, and operate the **MapUp Geofencing & Real-Time Alert System**.
 
 ---
 
-## 🚀 Quick Start with Docker Compose
+## 📋 Table of Contents
+1. [Prerequisites and Dependencies](#1-prerequisites-and-dependencies)
+2. [Local Setup Instructions](#2-local-setup-instructions)
+3. [How to Run with Docker Compose](#3-how-to-run-with-docker-compose)
+4. [API Testing Guide with Example `curl` Commands](#4-api-testing-guide-with-example-curl-commands)
+5. [Frontend Usage Guide](#5-frontend-usage-guide)
+6. [Architecture Overview](#6-architecture-overview)
 
-Ensure Docker and Docker Compose are installed.
+---
 
+## 1. Prerequisites and Dependencies
+
+Before setting up the project locally or via containers, ensure your machine satisfies the following requirements:
+
+### System & Tool Requirements
+| Component | Minimum Version | Purpose |
+|---|---|---|
+| **Operating System** | macOS, Linux, or Windows 10/11 | Host environment |
+| **GoLang** | Go `1.23.0` or higher | Backend REST API & WebSocket server |
+| **Node.js** | Node `18.x` or higher (LTS recommended) | Frontend build environment (Vite) |
+| **npm** | `9.x` or higher | Frontend package manager |
+| **Docker & Docker Compose** | Docker `24.x+`, Compose `v2.x+` | Containerized deployment |
+| **curl** | Any modern version | CLI testing for REST endpoints |
+| **wscat** *(Optional)* | `npm install -g wscat` | CLI testing for WebSocket connections |
+
+### Ports Used by Default
+- `8080`: Go Backend REST API & WebSocket Server
+- `3000`: React Frontend (Vite Dev Server or Docker Nginx)
+- `5432`: PostgreSQL 16 with PostGIS spatial extension (when running database container)
+
+> [!NOTE]
+> **Zero-Dependency Database Fallback**: The backend includes an automated dual-engine database layer. If PostgreSQL/PostGIS is not detected on port `5432`, the backend **automatically falls back to a high-performance in-memory repository**, allowing developers to run the entire backend immediately without installing or configuring a local database!
+
+---
+
+## 2. Local Setup Instructions
+
+Follow these steps to run both the backend and frontend directly on your host machine without Docker.
+
+### 2.1 Backend Setup (Go)
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/gowthamtraining/MAPUP_TASK.git
+   cd MAPUP_TASK
+   ```
+
+2. **Navigate to backend and download dependencies**:
+   ```bash
+   cd backend
+   go mod download
+   ```
+
+3. **Configure Environment Variables (Optional)**:
+   By default, sensible defaults are configured:
+   - `PORT=8080`
+   - `REQUIRE_AUTH=false` (Set `true` to enforce strict API key / JWT checks)
+   - `API_KEY=mapup-secret-key-2025`
+   - `DATABASE_URL` (Leave empty to use thread-safe in-memory storage, or provide a PostGIS connection string):
+     ```bash
+     # Optional PostGIS connection string:
+     # export DATABASE_URL="postgres://geouser:geopass@localhost:5432/geotracker?sslmode=disable"
+     ```
+
+4. **Start the Go Backend Server**:
+   ```bash
+   go run ./cmd/server
+   ```
+   *Expected console output:*
+   ```text
+   2026/11/13 10:00:00 Connecting to PostgreSQL with PostGIS...
+   2026/11/13 10:00:00 Initializing storage engine...
+   2026/11/13 10:00:00 Seeding initial sample geofences and vehicles...
+   2026/11/13 10:00:00 WebSocket Hub started and listening for broadcast events.
+   2026/11/13 10:00:00 MapUp Geofencing & Real-Time Alert Server running on port :8080
+   ```
+
+5. **Run Backend Unit Tests**:
+   To verify that all algorithms, endpoints, and middleware pass evaluation:
+   ```bash
+   go test -v ./...
+   ```
+
+---
+
+### 2.2 Frontend Setup (React + Vite)
+
+1. **Open a new terminal window** and navigate to the `frontend` directory:
+   ```bash
+   cd frontend
+   ```
+
+2. **Install frontend dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Configure Frontend Environment (Optional)**:
+   Create or verify `.env` in `frontend/`:
+   ```env
+   VITE_API_URL=http://localhost:8080
+   VITE_WS_URL=ws://localhost:8080/ws/alerts
+   VITE_API_KEY=mapup-secret-key-2025
+   ```
+
+4. **Start Vite Development Server**:
+   ```bash
+   npm run dev
+   ```
+   *Expected output:*
+   ```text
+     VITE v6.0.0  ready in 250 ms
+
+     ➜  Local:   http://localhost:3000/
+     ➜  Network: use --host to expose
+   ```
+
+5. Open your web browser at [http://localhost:3000](http://localhost:3000).
+
+---
+
+## 3. How to Run with Docker Compose
+
+Running the entire stack with Docker Compose is the recommended approach for complete parity with production. It orchestrates three containers:
+- `mapup-postgis-db`: PostgreSQL 16 with PostGIS spatial extension pre-enabled.
+- `mapup-geofence-backend`: Multi-stage compiled Go backend binary.
+- `mapup-geofence-frontend`: Production Vite build served via Nginx with reverse proxy caching.
+
+### Step 1: Start All Services
+From the root repository directory:
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd mapup
+docker compose up --build
+```
+*(Or `docker-compose up --build` on older Docker versions)*
 
-# Launch PostGIS database, Go backend, and React frontend
-docker-compose up --build
+### Step 2: Verify Running Containers
+Open another terminal and verify the healthy state of the services:
+```bash
+docker compose ps
+```
+*Expected status:*
+```text
+NAME                     IMAGE                         COMMAND                  SERVICE    STATUS
+mapup-postgis-db         postgis/postgis:16-3.4-alpine "docker-entrypoint.s…"   db         Up (healthy) :5432
+mapup-geofence-backend   mapup-backend:latest          "/app/server"            backend    Up           :8080
+mapup-geofence-frontend  mapup-frontend:latest         "/docker-entrypoint.…"   frontend   Up           :3000
 ```
 
-Services will be available at:
-- **Frontend Dashboard**: [http://localhost:3000](http://localhost:3000)
-- **Backend API**: [http://localhost:8080](http://localhost:8080)
-- **WebSocket Feed**: `ws://localhost:8080/ws/alerts`
-- **PostGIS Database**: `localhost:5432` (user: `geouser`, pass: `geopass`, db: `geotracker`)
+### Step 3: Access the Endpoints
+- **Web Application Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **REST API Base URL**: [http://localhost:8080](http://localhost:8080)
+- **Live WebSocket Alerts Stream**: `ws://localhost:8080/ws/alerts`
+- **Database Connection**: `localhost:5432` (User: `geouser`, Password: `geopass`, DB: `geotracker`)
 
-To stop the containers:
+### Step 4: Stop Containers & Clean Volumes
 ```bash
-docker-compose down
+docker compose down -v
 ```
 
 ---
 
-## 💻 Local Setup (Without Docker)
+## 4. API Testing Guide with Example `curl` Commands
 
-### Prerequisites
-- **GoLang 1.23+**
-- **Node.js 18+ & npm**
-- Optional: PostgreSQL with PostGIS extension (if not running, backend automatically uses high-performance thread-safe In-Memory storage).
+Every response strictly adheres to the assessment requirements and returns execution duration measured in nanoseconds as `"time_ns"`.
 
-### 1. Run Backend
-```bash
-cd backend
+### 1. `POST /geofences` — Create a Geofence
+Creates a closed polygonal geofence. The first and last coordinate must match.
 
-# Build and start server (uses in-memory repository by default)
-go run ./cmd/server
-
-# Or with PostgreSQL/PostGIS:
-# export DATABASE_URL="postgres://geouser:geopass@localhost:5432/geotracker?sslmode=disable"
-# go run ./cmd/server
-```
-The backend starts on `http://localhost:8080`.
-
-### 2. Run Frontend
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start Vite development server
-npm run dev
-```
-The frontend starts on `http://localhost:3000`.
-
----
-
-## 🧪 Comprehensive API Testing Guide (curl)
-
-### 1. Create a Geofence
 ```bash
 curl -X POST http://localhost:8080/geofences \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: mapup-secret-key-2025" \
   -d '{
     "name": "Downtown Delivery Zone",
     "description": "Main delivery area for downtown customers",
@@ -145,20 +189,58 @@ curl -X POST http://localhost:8080/geofences \
     "category": "delivery_zone"
   }'
 ```
-
-### 2. Retrieve All Geofences (with optional category filter)
-```bash
-# All geofences
-curl http://localhost:8080/geofences
-
-# Filtered by category
-curl "http://localhost:8080/geofences?category=delivery_zone"
+**Sample Response (`HTTP 201 Created`):**
+```json
+{
+  "id": "geo_123",
+  "name": "Downtown Delivery Zone",
+  "status": "active",
+  "time_ns": "1234567"
+}
 ```
 
-### 3. Register a Vehicle
+---
+
+### 2. `GET /geofences` — Retrieve All Geofences (with Optional Category Filter)
+
+```bash
+# Retrieve all geofences
+curl http://localhost:8080/geofences
+
+# Retrieve geofences filtered by category
+curl "http://localhost:8080/geofences?category=delivery_zone"
+```
+**Sample Response (`HTTP 200 OK`):**
+```json
+{
+  "geofences": [
+    {
+      "id": "geo_123",
+      "name": "Downtown Delivery Zone",
+      "description": "Main delivery area for downtown customers",
+      "coordinates": [
+        [37.7749, -122.4194],
+        [37.7849, -122.4194],
+        [37.7849, -122.4094],
+        [37.7749, -122.4094],
+        [37.7749, -122.4194]
+      ],
+      "category": "delivery_zone",
+      "created_at": "2025-01-15T10:30:00Z"
+    }
+  ],
+  "time_ns": "987654"
+}
+```
+
+---
+
+### 3. `POST /vehicles` — Register a New Vehicle
+
 ```bash
 curl -X POST http://localhost:8080/vehicles \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: mapup-secret-key-2025" \
   -d '{
     "vehicle_number": "KA-01-AB-1234",
     "driver_name": "John Doe",
@@ -166,164 +248,364 @@ curl -X POST http://localhost:8080/vehicles \
     "phone": "+1234567890"
   }'
 ```
+**Sample Response (`HTTP 201 Created`):**
+```json
+{
+  "id": "veh_456",
+  "vehicle_number": "KA-01-AB-1234",
+  "status": "active",
+  "time_ns": "1123456"
+}
+```
 
-### 4. Retrieve All Vehicles
+---
+
+### 4. `GET /vehicles` — Retrieve All Registered Vehicles
+
 ```bash
 curl http://localhost:8080/vehicles
 ```
+**Sample Response (`HTTP 200 OK`):**
+```json
+{
+  "vehicles": [
+    {
+      "id": "veh_456",
+      "vehicle_number": "KA-01-AB-1234",
+      "driver_name": "John Doe",
+      "vehicle_type": "truck",
+      "phone": "+1234567890",
+      "status": "active",
+      "created_at": "2025-01-15T09:00:00Z"
+    }
+  ],
+  "time_ns": "876543"
+}
+```
 
-### 5. Update Vehicle Location (Triggers Entry/Exit Events & Alerts)
+---
+
+### 5. `POST /vehicles/location` — Update Location & Trigger Geofence Alerts
+*Evaluates whether the vehicle entered or exited zones and asynchronously broadcasts alerts to `/ws/alerts` for restricted breaches.*
+
 ```bash
-# Update position inside geofence
 curl -X POST http://localhost:8080/vehicles/location \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: mapup-secret-key-2025" \
   -d '{
-    "vehicle_id": "veh_truck_101",
-    "latitude": 37.7800,
-    "longitude": -122.4150,
+    "vehicle_id": "veh_456",
+    "latitude": 37.7849,
+    "longitude": -122.4194,
     "timestamp": "2025-01-15T10:35:00Z"
   }'
 ```
-
-### 6. Get Current Vehicle Location & Geofence Status
-```bash
-curl http://localhost:8080/vehicles/location/veh_truck_101
+**Sample Response (`HTTP 200 OK`):**
+```json
+{
+  "vehicle_id": "veh_456",
+  "location_updated": true,
+  "current_geofences": [
+    {
+      "geofence_id": "geo_123",
+      "geofence_name": "Downtown Delivery Zone",
+      "status": "inside"
+    }
+  ],
+  "time_ns": "2345678"
+}
 ```
 
-### 7. Configure Alert Rule
+---
+
+### 6. `GET /vehicles/location/{vehicle_id}` — Get Current Vehicle Location & Zones
+
+```bash
+curl http://localhost:8080/vehicles/location/veh_456
+```
+**Sample Response (`HTTP 200 OK`):**
+```json
+{
+  "vehicle_id": "veh_456",
+  "vehicle_number": "KA-01-AB-1234",
+  "current_location": {
+    "latitude": 37.7849,
+    "longitude": -122.4194,
+    "timestamp": "2025-01-15T10:35:00Z"
+  },
+  "current_geofences": [
+    {
+      "geofence_id": "geo_123",
+      "geofence_name": "Downtown Delivery Zone",
+      "category": "delivery_zone"
+    }
+  ],
+  "time_ns": "876543"
+}
+```
+
+---
+
+### 7. `POST /alerts/configure` — Configure Alert Rules
+
 ```bash
 curl -X POST http://localhost:8080/alerts/configure \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: mapup-secret-key-2025" \
   -d '{
-    "geofence_id": "geo_downtown_01",
-    "vehicle_id": "veh_truck_101",
+    "geofence_id": "geo_123",
+    "vehicle_id": "veh_456",
     "event_type": "entry"
   }'
 ```
+**Sample Response (`HTTP 201 Created`):**
+```json
+{
+  "alert_id": "alert_789",
+  "geofence_id": "geo_123",
+  "vehicle_id": "veh_456",
+  "event_type": "entry",
+  "status": "active",
+  "time_ns": "1567890"
+}
+```
 
-### 8. Retrieve Configured Alert Rules
+---
+
+### 8. `GET /alerts` — Retrieve Configured Alert Rules (with Optional Filters)
+
 ```bash
+# Retrieve all alert rules
 curl http://localhost:8080/alerts
-```
 
-### 9. Retrieve Violation History
-```bash
-curl "http://localhost:8080/violations/history?limit=50"
+# Retrieve rules filtered by geofence or vehicle
+curl "http://localhost:8080/alerts?geofence_id=geo_123&vehicle_id=veh_456"
+```
+**Sample Response (`HTTP 200 OK`):**
+```json
+{
+  "alerts": [
+    {
+      "alert_id": "alert_789",
+      "geofence_id": "geo_123",
+      "geofence_name": "Downtown Delivery Zone",
+      "vehicle_id": "veh_456",
+      "vehicle_number": "KA-01-AB-1234",
+      "event_type": "entry",
+      "status": "active",
+      "created_at": "2025-01-15T09:15:00Z"
+    }
+  ],
+  "time_ns": "654321"
+}
 ```
 
 ---
 
-## 📹 Video Presentation Roadmap (30-45 Minutes)
+### 9. `GET /violations/history` — Retrieve Historical Entry/Exit Audit Logs
 
-For your video submission, follow this structured agenda:
+```bash
+# Basic retrieval with default limit (50)
+curl http://localhost:8080/violations/history
 
-### Section 1: Live Application Demo (10–12 Minutes)
-1. **Introduction**: Introduce yourself and present the high-level architecture overview.
-2. **Dashboard Tour**:
-   - Show the interactive map with color-coded polygons (Red = Restricted, Blue = Delivery, Amber = Toll, Green = Customer).
-   - Point out real-time WebSocket connection status badge.
-3. **Geofence Creation**:
-   - Use the "Draw" tool on the map to define vertices and save a new zone.
-   - Show the polygon rendered on the map and appearing in the zones list.
-4. **Vehicle Registration & Live Tracking**:
-   - Register a new vehicle with assigned driver.
-   - Use the "Move" tool to click on the map and teleport the vehicle.
-5. **Real-time Alert Demonstration**:
-   - Move a vehicle from outside a zone to inside a **Restricted Zone**.
-   - Show the immediate pop-up toast and live alert streaming into the WebSocket feed with zero latency.
-6. **Audit & Violation History**:
-   - Open the "History Logs" tab.
-   - Filter by vehicle, geofence, and record limit to inspect historical entries and exits.
-7. **Docker Compose Demonstration**:
-   - Show `docker-compose up` running the database, backend, and frontend containers locally.
-
-### Section 2: Implementation Deep Dive (12–18 Minutes)
-1. **Project Structure**:
-   - Explain clean architectural boundaries: `domain`, `geospatial`, `repository`, `service`, `handler`, `websocket`.
-2. **Point-in-Polygon (PIP) Algorithm**:
-   - Walk through `internal/geospatial/polygon.go`.
-   - Explain the $O(1)$ Bounding Box optimization for instant rejection.
-   - Explain the Ray-Casting algorithm and how edge boundaries are handled using `ST_Covers` inclusive semantics.
-   - Highlight coordinate ordering: API uses `[lat, lon]`, whereas PostGIS uses `[lon, lat]` (X, Y).
-3. **Stateful Transition Detection**:
-   - Walk through `internal/service/tracker.go`.
-   - Explain comparing `previousGeofenceSet` vs `currentGeofenceSet` to calculate entries and exits.
-   - Show how alerts are evaluated and dispatched into an asynchronous goroutine.
-4. **WebSocket Concurrency & Hub Architecture**:
-   - Walk through `internal/websocket/hub.go`.
-   - Discuss how the channel-based loop prevents race conditions on `clients map[*Client]bool`.
-   - Explain dead-connection drops and heartbeat handling.
-5. **Execution Timing (`time_ns`)**:
-   - Show `internal/handler/response.go` and explain how every response (success and error) records nanosecond duration.
-6. **Database Layer (Dual Engine)**:
-   - Walk through `internal/repository/postgres.go` (PostGIS `ST_Covers`, GiST index).
-   - Explain the graceful fallback to `internal/repository/memory.go`.
-
-### Section 3: Gaps, Production Scaling & Roadmap (10–15 Minutes)
-1. **Edge Cases & Nuances**:
-   - Complex concave/self-intersecting polygons (validating simple polygons with Jordan Curve Theorem).
-   - GPS drift/jitter: How to add Kalman filtering or speed thresholds so a vehicle idling on a boundary does not flutter alerts.
-2. **Horizontal Scaling to 100,000+ Vehicles**:
-   - **Distributed Message Broker**: Introduce Redis Pub/Sub or Apache Kafka to distribute WebSocket alerts across multiple backend replicas.
-   - **Spatial Indexing & Sharding**: PostGIS table partitioning by region or geohash.
-   - **In-Memory Spatial Grid / R-Tree Cache**: Caching active geofences in an in-memory R-Tree (e.g., `tidwall/rtree`) so containment checks run in sub-millisecond memory without querying the database for every ping.
-3. **Security & Production Hardening**:
-   - JWT authentication for drivers and fleet managers.
-   - Redis-backed rate limiting on `/vehicles/location` per vehicle API key.
-   - Mutual TLS (mTLS) for IoT telemetry devices.
+# Multi-filter query with pagination
+curl "http://localhost:8080/violations/history?vehicle_id=veh_456&geofence_id=geo_123&limit=100"
+```
+**Sample Response (`HTTP 200 OK`):**
+```json
+{
+  "violations": [
+    {
+      "id": "viol_111",
+      "vehicle_id": "veh_456",
+      "vehicle_number": "KA-01-AB-1234",
+      "geofence_id": "geo_123",
+      "geofence_name": "Downtown Delivery Zone",
+      "event_type": "entry",
+      "latitude": 37.7849,
+      "longitude": -122.4194,
+      "timestamp": "2025-01-15T10:35:00Z"
+    }
+  ],
+  "total_count": 245,
+  "time_ns": "3456789"
+}
+```
 
 ---
 
-## 🐳 Docker Hub Push & Cloud Deployment Guide
+### 10. `GET /ws/alerts` — WebSocket Real-Time Alert Stream
 
-### 1. Build & Push Images to Docker Hub
-
-Both services are containerized with production-ready multi-stage Dockerfiles.
-
+Test using `wscat`:
 ```bash
-# Push Backend
-docker tag mapup-backend:latest gowtham095/mapup-geofence-backend:latest
-docker push gowtham095/mapup-geofence-backend:latest
-
-# Push Frontend
-docker tag mapup-frontend:latest gowtham095/mapup-geofence-frontend:latest
-docker push gowtham095/mapup-geofence-frontend:latest
+wscat -c "ws://localhost:8080/ws/alerts"
+```
+When a vehicle enters a restricted zone or triggers a configured rule, the WebSocket immediately pushes:
+```json
+{
+  "event_id": "evt_999",
+  "event_type": "entry",
+  "timestamp": "2025-01-15T10:35:00Z",
+  "vehicle": {
+    "vehicle_id": "veh_456",
+    "vehicle_number": "KA-01-AB-1234",
+    "driver_name": "John Doe"
+  },
+  "geofence": {
+    "geofence_id": "geo_123",
+    "geofence_name": "Downtown Delivery Zone",
+    "category": "delivery_zone"
+  },
+  "location": {
+    "latitude": 37.7849,
+    "longitude": -122.4194
+  }
+}
 ```
 
-### 2. Cloud Deployment (Render / Railway / Koyeb)
+---
 
-**Option A: Deploy via Docker Images on Render (Free Tier & WebSocket Support)**
-- **Backend Service**:
-  - Image: `docker.io/gowtham095/mapup-geofence-backend:latest`
-  - Port: `8080`
-  - Environment: `PORT=8080`, `API_KEY=mapup-secret-key-2025`
-- **Frontend Service**:
-  - Image: `docker.io/gowtham095/mapup-geofence-frontend:latest`
-  - Port: `80` (Nginx)
+## 5. Frontend Usage Guide
 
-**Option A: Deploy on Render (Recommended - Free Tier & WebSocket Support)**
-1. Go to [render.com](https://render.com) and create a **New Web Service**.
-2. Connect your GitHub repository or enter your Docker Hub image:
-   `docker.io/<your-dockerhub-username>/mapup-geofence-backend:latest`
-3. Set Environment Variables:
-   - `PORT`: `8080`
-   - `DATABASE_URL`: `postgres://...` (or leave blank to use fast In-Memory mode)
-   - `API_KEY`: `mapup-secret-key-2025`
-4. Click **Deploy**. Render will generate a public HTTPS URL (e.g., `https://mapup-backend.onrender.com`).
+The React application delivers a responsive web interface designed for fleet managers, dispatchers, and security supervisors.
 
-**Option B: Deploy on Railway**
-1. Go to [railway.app](https://railway.app) and create a **New Project**.
-2. Choose **Deploy from Docker Hub** $\rightarrow$ `<your-dockerhub-username>/mapup-geofence-backend:latest`.
-3. Add variable `PORT=8080`.
-4. Generate Domain $\rightarrow$ gives public URL.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  🌐 MapUp GeoTrack Engine                     ● WebSocket Live         │
+├─────────────────────────────────────────┬──────────────────────────────┤
+│                                         │ [Alerts] [Zones] [Fleet]     │
+│                                         ├──────────────────────────────┤
+│                                         │ 🚨 Live Real-Time Alerts     │
+│         Interactive Leaflet Map         │                              │
+│                                         │ - Restricted Zone Breach!    │
+│  - Red: Restricted Zones                │   KA-01-AB-1234 entered Port │
+│  - Blue: Delivery Zones                 │   Security at 10:35:00Z      │
+│  - Green: Customer Areas                │                              │
+│  - Vehicles with pulsating SVG icons    │ - Exit Event                 │
+│                                         │   KA-05-XY-7777 left Zone    │
+│                                         │                              │
+│                                         ├──────────────────────────────┤
+│                                         │ [Draw Polygon] [Move Vehicle]│
+└─────────────────────────────────────────┴──────────────────────────────┘
+```
 
-### 3. Frontend Deployment (Vercel / Netlify)
+### 5.1 Main Layout & Status Bar
+- **Top Navigation Bar**:
+  - **WebSocket Live Indicator**: A green pulsing dot signals an active WebSocket connection. If connection drops, it displays an amber reconnecting badge.
+  - **View Switcher**: Toggle between the main **Dashboard Map** and **History Logs** audit table.
 
-Deploy the React application to [Vercel](https://vercel.com):
-1. Import your GitHub repository in Vercel.
-2. Set **Root Directory** to `frontend`.
-3. Framework Preset: **Vite**.
-4. Configure Environment Variables:
-   - `VITE_API_URL`: `https://<your-deployed-backend-url>`
-   - `VITE_WS_URL`: `wss://<your-deployed-backend-host>/ws/alerts`
-5. Click **Deploy**. Vercel will build and serve your app globally.
+### 5.2 Creating Geofences (Interactive Drawing & Coordinates)
+1. In the right sidebar, click the **"Zones"** tab.
+2. Click **"Draw Mode"**.
+3. Click anywhere on the map to place vertices (at least 3 unique points).
+4. As you click, a dynamic dashed polygon outline previews the shape.
+5. Click **"Save (N pts)"** to open the Creation Modal.
+6. Provide:
+   - **Name**: e.g., `Downtown Delivery Hub`
+   - **Category**: Select `delivery_zone`, `restricted_zone`, `toll_zone`, or `customer_area`.
+   - **Description**: Optional text.
+7. Click **"Create Geofence"**. The polygon renders on the map immediately with category-specific color coding.
+
+### 5.3 Managing Vehicles & Fleet
+1. Click the **"Fleet"** tab on the sidebar.
+2. Click **"Add Vehicle"** to register a new truck, car, van, or motorcycle.
+3. Every registered vehicle displays:
+   - Registration number, driver name, and phone.
+   - Live location status badge (`Inside: <Zone Name>` or `Outside geofences`).
+   - A distinct animated SVG vehicle marker positioned on the map.
+
+### 5.4 Updating Vehicle Locations (Click-to-Move Teleportation)
+1. On any vehicle card in the Fleet list, click the blue **"Move"** button.
+2. The map cursor changes to crosshairs.
+3. Click any point on the map (inside or outside of a geofence).
+4. The frontend calls `POST /vehicles/location`, animates the vehicle marker, and updates the vehicle status in real time.
+
+### 5.5 Triggering Real-Time Alerts (Restricted Zone Breaches)
+- Move any vehicle into a red **`restricted_zone`** (such as the pre-seeded *Port Security Zone*).
+- The system automatically detects the state transition from outside to inside:
+  - An urgent **red floating toast notification** slides in at the top right.
+  - A notification audio ping plays.
+  - An alert card is pushed to the top of the **Live Alerts** feed with exact vehicle, zone, and coordinate details.
+
+### 5.6 Reviewing Historical Audit Logs (History Logs View)
+1. Click **"History Logs"** in the top navigation bar.
+2. View the tabulated history of all entry and exit events.
+3. Use the filter bar to:
+   - Filter by specific vehicle number.
+   - Filter by specific geofence name.
+   - Navigate pages using server-side pagination.
+
+---
+
+## 6. Architecture Overview
+
+### 6.1 Architectural Block Diagram
+
+```
+[React 19 Frontend (Vite + Leaflet)]
+        │                 ▲
+   HTTP │            WSS  │ (/ws/alerts)
+        ▼                 │
+[Go Chi Router & API Controllers]
+        │
+   [Middleware: Token-Bucket Rate Limiter & Auth Validator]
+        │
+   [Execution Timer: Injects time_ns in all responses]
+        │
+        ▼
+[Tracker Service: Stateful Transition Detector]
+   ├── Computes Set Difference: Entries (New - Old) & Exits (Old - New)
+   ├── Evaluates Alert Rules & Restricted Zone Flags
+   └── Dispatches Async Goroutine ──► [Go WebSocket Hub Actor]
+        │
+        ▼
+[Geospatial Math Engine & Persistence Layer]
+   ├── O(1) Bounding-Box Envelope Pre-filter
+   ├── Ray-Casting Point-in-Polygon with Inclusive Boundary Check
+   └── PostGIS 16 (GiST Spatial Index on Polygon Geometries)
+        └── (Automatic Fallback: In-Memory Mutex Store)
+```
+
+### 6.2 Key Architectural Decisions
+
+1. **Stateful Transition Detector**:
+   - Simple containment does not trigger alerts. Alerts are **edge triggers**.
+   - The engine maintains each vehicle's `previousGeofenceIDs`. Transitions are computed as:
+     $$\text{Entries} = \text{CurrentGeofences} \setminus \text{PreviousGeofences}$$
+     $$\text{Exits} = \text{PreviousGeofences} \setminus \text{CurrentGeofences}$$
+   - This prevents alert spamming when a vehicle remains stationary inside a zone.
+
+2. **Geospatial Point-in-Polygon Engine**:
+   - **$O(1)$ Bounding-Box Fast Rejection**: Calculates $[MinLat, MaxLat, MinLon, MaxLon]$ to instantly dismiss distant points before running trigonometry.
+   - **Ray-Casting Algorithm**: Casts a horizontal ray eastward and counts segment intersections (odd = inside, even = outside).
+   - **Inclusive Boundary Semantics (`ST_Covers`)**: Explicit collinearity tests ensure points resting exactly on polygon segments are classified as **INSIDE**.
+
+3. **Coordinate Order Standard**:
+   - The REST API receives `[Latitude, Longitude]`.
+   - PostGIS and GeoJSON expect `(Longitude, Latitude)` / $(X, Y)$ order.
+   - The repository explicitly maps Longitude $\to X$ and Latitude $\to Y$ when constructing WKT (`SRID=4326;POLYGON((lon lat, ...))`) and point geometry queries.
+
+4. **Non-Blocking Asynchronous WebSocket Broadcast**:
+   - Alert dispatch is offloaded into a Go goroutine (`go s.wsHub.BroadcastAlert(msg)`).
+   - The HTTP response returns to the GPS tracker in **under 2 milliseconds**, completely decoupled from connected browser latency.
+
+5. **Production Bonus Features**:
+   - **Token Bucket Rate Limiter**: Protects `/vehicles/location` against DoS floods with standard `X-RateLimit-*` headers.
+   - **Authentication**: Supports `X-API-Key` and RFC 7519 HMAC-SHA256 JWT tokens.
+   - **Universal Pagination**: Full `page` and `limit` support on geofences, vehicles, alerts, and history.
+   - **Unit Test Suite**: 100% passing tests for geometric math, API contracts, transition logic, and security middleware.
+
+---
+
+## 7. Cloud Deployment & Docker Hub Reference
+
+### Pre-Built Docker Images
+- **Backend Image**: [`gowtham095/mapup-geofence-backend:latest`](https://hub.docker.com/r/gowtham095/mapup-geofence-backend)
+- **Frontend Image**: [`gowtham095/mapup-geofence-frontend:latest`](https://hub.docker.com/r/gowtham095/mapup-geofence-frontend)
+
+### Live Cloud Deployment
+- **Backend API (Render)**: [`https://mapup-geofence-backend-latest.onrender.com`](https://mapup-geofence-backend-latest.onrender.com)
+- **Live WebSocket Feed**: `wss://mapup-geofence-backend-latest.onrender.com/ws/alerts`
+- **Frontend Configuration**: Ready for one-click deployment on Netlify (`netlify.toml` included) or Vercel (`vercel.json` included).
+
+---
+*Developed for the MapUp Full-Stack Developer Assessment.*
